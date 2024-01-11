@@ -1,0 +1,356 @@
+<?xml version="1.0" encoding="utf-8"?>
+<OneStreamXF version="6.8.1.13230">
+    <extensibilityRulesRoot>
+        <businessRule businessRuleType="Extender" name="OP_MLE_DataMgmt">
+            <accessGroup>Administrators</accessGroup>
+            <maintenanceGroup>Administrators</maintenanceGroup>
+            <isGlobal>false</isGlobal>
+            <isEncrypted>false</isEncrypted>
+            <referencedAssemblies />
+            <sourceCode><![CDATA[Imports System
+Imports System.Data
+Imports System.Data.Common
+Imports System.IO
+Imports System.Collections.Generic
+Imports System.Globalization
+Imports System.Linq
+Imports Microsoft.VisualBasic
+Imports System.Windows.Forms
+Imports OneStream.Shared.Common
+Imports OneStream.Shared.Wcf
+Imports OneStream.Shared.Engine
+Imports OneStream.Shared.Database
+Imports OneStream.Stage.Engine
+Imports OneStream.Stage.Database
+Imports OneStream.Finance.Engine
+Imports OneStream.Finance.Database
+
+Namespace OneStream.BusinessRule.Extender.OP_MLE_DataMgmt
+
+	Public Class MainClass
+
+		Public Function Main(ByVal si As SessionInfo, ByVal globals As BRGlobals, ByVal api As Object, ByVal args As ExtenderArgs) As Object
+		
+			Dim Log As New System.Text.StringBuilder()
+		
+			Try
+				Select Case args.FunctionType
+
+					Case Is = ExtenderFunctionType.ExecuteDataMgmtBusinessRuleStep
+
+						'==========
+						'= Options
+						'==========
+						
+						Dim bDebug As Boolean = False
+
+						'User should choose which of the entity security properties they want to nest. May not be all.
+						Dim sProperties As String = args.NameValuePairs("lProperties")
+						Dim lProperties As List(Of String) = sProperties.Split(";").Select(Function(p) p.Trim()).ToList()
+						
+						'Limit processing to specific (sub-)hierarchy if specified by user
+						Dim sTopEntity As String = args.NameValuePairs("topEntityForNesting")
+
+						'Filter sec groups to be processed by prefix. Important if using "replace mode"
+						'i.e. clearing old groups, as possible non-entity group assignments must then be preserved.
+						Dim sPrefixes As String = args.NameValuePairs("lPrefixes")
+						Dim lPrefixes As List(Of String) = sPrefixes.Split(";").Select(Function(p) p.Trim()).ToList()
+
+						'Remove previously existing child entity groups to make sure that sec 
+						'hierarchy reflects current entity hierarchy.
+						Dim bReplaceMode As Boolean = Convert.ToBoolean(args.NameValuePairs("bReplaceModeNesting"))
+
+						'Add read group to read/write group to avoid having to assign both to users
+						Dim bAddReadToReadWrite As Boolean = Convert.ToBoolean(args.NameValuePairs("bAddReadToReadWrite"))
+
+						Log.AppendLine($"Running entity security group nesting rule...")
+						Log.AppendLine($"Properties = {String.Join(", ", lProperties)}")
+						Log.AppendLine($"Prefixes = {String.Join(", ", lPrefixes)}")
+						Log.AppendLine($"Unnest redundant entity groups = {bReplaceMode}")
+						Log.AppendLine($"Add Read group to ReadWrite group = {bAddReadToReadWrite} {vbCrLf}")
+
+						Dim bTaskCanceled As Boolean = False
+
+						'==========
+						'= Get entities to process
+						'==========
+						
+						'Update task
+						bTaskCanceled = BRApi.TaskActivity.UpdateRunningTaskActivityAndCheckIfCanceled(si, args, "Creating entity list", 0)
+						If bTaskCanceled Then Return Nothing
+						
+						Dim lEntityDims As List(Of [Dim]) = BRApi.Finance.Dim.GetDims(si, DimType.Entity.Id)
+						Dim lEntities As New List(Of Member)
+
+						If sTopEntity <> "" Then
+							'Limit processing to descendants of specified top entity
+							Dim mbrTopEntity As Member = BRApi.Finance.Members.GetMember(si, DimTypeId.Entity, sTopEntity)
+							
+							If mbrTopEntity Is Nothing Then
+								Dim ErrMsg As String = $"Selected top entity {sTopEntity} is not a valid entity member"
+								If bDebug Then Log.AppendLine(ErrMsg)
+								Throw New System.Exception(ErrMsg)
+							End If
+							
+							Dim lTopEntityDescendants As List(Of Member) = _
+								BRApi.Finance.Members.GetDescendants(
+									si, _
+									lEntityDims.Find(Function(d) d.DimPk.DimId = mbrTopEntity.DimId).DimPk, _
+									mbrTopEntity.MemberId
+								)
+							lEntities.Add(mbrTopEntity)
+							lEntities.AddRange(lTopEntityDescendants)
+						Else
+							'Process all entities
+							For Each dimEntity In lEntityDims
+								For Each mbrEntity In BRApi.Finance.Members.GetAllMembers(si, dimEntity.DimPk, True)
+									If mbrEntity.IsNone Then Continue For
+									lEntities.Add(mbrEntity)
+								Next
+							Next
+						End If
+
+						Dim lParentEntities As List(Of Member) = lEntities _
+							.Where(Function(mbr) BRApi.Finance.Members.HasChildren(
+								si,
+								lEntityDims.Find(Function(d) d.DimPk.DimId = mbr.DimId).DimPk, 
+								mbr.MemberId
+							)).ToList()
+							
+						If bDebug Then Log.AppendLine($"lEntities: {String.Join(", ", lEntities.Select(Function(mbr) mbr.Name))}")
+						If bDebug Then Log.AppendLine($"lParentEntities: {String.Join(", ", lParentEntities.Select(Function(mbr) mbr.Name))}")
+							
+						'==========
+						'= Get sec groups with approved prefixes for processing [dict (guid) -> bool]
+						'==========
+							
+						Dim AllSecGroups As List(Of Group) = BRApi.Security.Admin.GetGroups(si)
+						Dim EntityPrefixedGroups As New Dictionary(Of Guid, Boolean)
+						For Each SecGroup As Group In AllSecGroups
+							For Each Prefix In lPrefixes
+								If SecGroup.Name.StartsWith(Prefix) Then
+									EntityPrefixedGroups.Add(SecGroup.UniqueID, True)
+								End If
+							Next
+						Next
+						
+						'==========
+						'= Get groups for all entities for all properties under selected entity top [dict (entity|field) -> Guid]
+						'==========
+						
+						'Update task
+						bTaskCanceled = BRApi.TaskActivity.UpdateRunningTaskActivityAndCheckIfCanceled(si, args, "Fetching entity sec groups", 0)
+						If bTaskCanceled Then Return Nothing
+						
+						Dim SecGroups As New Dictionary (Of String, Guid)
+						For Each Ent As Member In lEntities
+							If bDebug Then Log.AppendLine($"Adding SecGroups for {Ent.Name}")
+							
+							SecGroups.Add($"{Ent.Name}|DisplayMemberGroupUniqueID", Ent.DisplayMemberGroupUniqueID)
+							SecGroups.Add($"{Ent.Name}|ReadDataGroupUniqueID", Ent.ReadDataGroupUniqueID)
+							SecGroups.Add($"{Ent.Name}|ReadDataGroupUniqueID2", Ent.ReadDataGroupUniqueID2)
+							SecGroups.Add($"{Ent.Name}|ReadWriteDataGroupUniqueID", Ent.ReadWriteDataGroupUniqueID)
+							SecGroups.Add($"{Ent.Name}|ReadWriteDataGroupUniqueID2", Ent.ReadWriteDataGroupUniqueID2)
+						Next
+						
+						If bDebug Then Log.AppendLine($"SecGroups: {String.Join(", ", SecGroups.Select(Function(kvp) $"{kvp.Key}->{kvp.Value}"))}")
+						
+						'==========
+						'= For each parent entity security group, get list of child sec groups to be saved [dict (Guid) -> List(Of Guid)]
+						'==========
+						
+						'Update task
+						bTaskCanceled = BRApi.TaskActivity.UpdateRunningTaskActivityAndCheckIfCanceled(si, args, "Determining groups to be nested", 0)
+						If bTaskCanceled Then Return Nothing
+							
+						Dim ParentEntityParentGroups As New Dictionary (Of Guid, List(Of Guid))
+						For Each Parent As Member In lParentEntities
+							
+							Dim lChildEntities As List(Of Member) = BRApi.Finance.Members.GetChildren(
+								si,
+								BRApi.Finance.Dim.GetDimPk(si, lEntityDims.Find(Function(x) x.DimPk.DimId = Parent.DimId).Name),
+								Parent.MemberId
+							)
+							
+							For Each sProperty As String In lProperties
+								Dim ParentSecGroup As Guid = SecGroups($"{Parent.Name}|{sProperty}")
+								Dim ChildGroups As New List(Of Guid)
+								
+								For Each Child As Member In lChildEntities
+									Dim ChildSecGroup As Guid = SecGroups($"{Child.Name}|{sProperty}")
+									
+									If Not EntityPrefixedGroups.ContainsKey(ChildSecGroup) Then Continue For
+									If ChildSecGroup = ParentSecGroup Then Continue For
+									If ChildGroups.Contains(ChildSecGroup) Then Continue For
+									
+									ChildGroups.Add(ChildSecGroup)
+								Next
+								
+								'==========
+								'= If same sec group used with many parent's or for multiple properties (DISP, R, RW, R2, RW2),
+								'= add child groups from the other entities/properties to avoid overwriting.
+								'==========
+								
+								If ParentEntityParentGroups.ContainsKey(ParentSecGroup) Then
+									Dim ChildGroupsFromOtherEntities As List(Of Guid) = ParentEntityParentGroups(ParentSecGroup)
+									ChildGroupsFromOtherEntities.AddRange(ChildGroups)
+									Dim CombinedChildGroups As List(Of Guid) = ChildGroupsFromOtherEntities.Distinct().ToList()
+									ParentEntityParentGroups(ParentSecGroup) = CombinedChildGroups
+								Else
+									ChildGroups.Distinct().ToList()
+									ParentEntityParentGroups.Add(ParentSecGroup, ChildGroups)
+								End If
+								
+								If bDebug Then Log.AppendLine($"ParentEntityParentGroups for {Parent.Name}: {String.Join(", ", SecGroups.Select(Function(kvp) $"{kvp.Key}->{String.Join(",", kvp.Value)}"))}")
+							Next
+						Next
+						
+						'==========
+						'= Perform nesting
+						'==========
+						
+						Dim CurrentStep As Integer = 0
+						BRApi.TaskActivity.UpdateRunningTaskActivityAndCheckIfCanceled(si, args, $"Performing nesting", 30)
+						
+						For Each ParentGroupKvp As KeyValuePair(Of Guid, List(Of Guid)) In ParentEntityParentGroups
+							
+							Dim ParentGrpInfoEx As GroupInfoEx = BRApi.Security.Admin.GetGroupInfoEx(si, ParentGroupKvp.Key)
+							Dim ParentGrp As Group = ParentGrpInfoEx.GroupInfo.Group
+							
+							If ParentGrp.IsAdministratorsGroup Then Continue For
+							If ParentGrp.IsEveryoneGroup Then Continue For
+							If ParentGrp.IsNobodyGroup Then Continue For
+							
+							'Update task
+							CurrentStep += 1
+							bTaskCanceled = BRApi.TaskActivity.UpdateRunningTaskActivityAndCheckIfCanceled(si, args, $"Performing nesting - {ParentGrp.Name} ({CurrentStep}/{ParentEntityParentGroups.Count})", 0)
+							If bTaskCanceled Then Return Nothing
+								
+							Dim ChildGroupsToSave As New List(Of Guid)
+								
+							'==========
+							'= Get existing child groups in security hierarchy
+							'= Remove existing entity groups as identified by defined prefixes (if replace mode)
+							'==========
+								
+							For Each ExistingChildGroupKvp As KeyValuePair(Of Guid, Group) In ParentGrpInfoEx.ParentGroups
+								Dim ExistingChildGrp As Group = ExistingChildGroupKvp.Value
+								
+								If bReplaceMode Then
+									If lPrefixes.Any(Function(pf) ExistingChildGrp.Name.StartsWith(pf)) Then
+										'Skip
+									Else
+										ChildGroupsToSave.Add(ExistingChildGrp.UniqueID)
+									End If
+								Else
+									ChildGroupsToSave.Add(ExistingChildGrp.UniqueID)
+								End If
+							Next
+							
+							'==========
+							'= Add children’s sec groups based on current entity hierarchy
+							'==========
+							
+							Dim NewChildEntityGroups As List(Of Guid) = ParentGroupKvp.Value
+							ChildGroupsToSave.AddRange(NewChildEntityGroups)
+							ChildGroupsToSave.Distinct().ToList()
+							
+							'==========
+							'= Save group with updated children (note: children are called parents in sec groups)
+							'==========
+							
+							If bDebug Then
+								Dim ChildGroupsToSaveNames As New List(Of String)
+								For Each ChildGroup As Guid In ChildGroupsToSave
+									Dim GrpInfoEx As GroupInfoEx = BRApi.Security.Admin.GetGroupInfoEx(si, ChildGroup)
+									ChildGroupsToSaveNames.Add(GrpInfoEx.GroupInfo.Group.Name)
+								Next
+								Log.AppendLine($"ChildGroupsToSave for {ParentGrp.Name}: {String.Join(", ", ChildGroupsToSaveNames)}")
+							End If
+							
+							BRApi.Security.Admin.SaveGroup(si, ParentGrpInfoEx.GroupInfo, True, ChildGroupsToSave, False)
+							
+						Next
+							
+						'==========
+						'= Add read group to readwrite group at all levels (not just parents) if selected in options
+						'==========
+						
+						CurrentStep = 0
+						BRApi.TaskActivity.UpdateRunningTaskActivityAndCheckIfCanceled(si, args, $"Adding ReadGroups to ReadWriteGroups", 30)
+						
+						If bAddReadToReadWrite Then
+							
+							For Each Ent As Member In lEntities
+								
+								'Update task
+								CurrentStep += 1
+								bTaskCanceled = BRApi.TaskActivity.UpdateRunningTaskActivityAndCheckIfCanceled(si, args, $"Adding ReadGroup to ReadWriteGroup for {Ent.Name} ({CurrentStep}/{lEntities.Count})", 0)
+								If bTaskCanceled Then Return Nothing
+
+								For Each sProperty As String In lProperties
+									Dim ReadGroupProperty As String
+									
+									Select sProperty
+										Case "ReadWriteDataGroupUniqueID"
+											ReadGroupProperty = "ReadDataGroupUniqueID"
+										Case "ReadWriteDataGroupUniqueID2"
+											ReadGroupProperty = "ReadDataGroupUniqueID2"
+										Case Else
+											ReadGroupProperty = ""
+									End Select
+									
+									If ReadGroupProperty <> "" Then
+										Dim ReadGroup As Guid = SecGroups($"{Ent.Name}|{ReadGroupProperty}")
+										Dim WriteGroup As Guid = SecGroups($"{Ent.Name}|{sProperty}")
+										
+										Dim GrpInfoExWriteGroup As GroupInfoEx = BRApi.Security.Admin.GetGroupInfoEx(si, WriteGroup)
+										
+										'Check for e.g. 'Not found' group assignments
+										If GrpInfoExWriteGroup Is Nothing
+											If bDebug Then Log.AppendLine($"{Ent.Name} - Skipped - WriteGroup not found: {sProperty}|{WriteGroup}")
+											Continue For
+										End If
+										
+										Dim WriteGroupParentGroups As Dictionary(Of Guid, Group) = GrpInfoExWriteGroup.ParentGroups
+										
+										If Not EntityPrefixedGroups.ContainsKey(ReadGroup) Then Continue For
+										If ReadGroup = WriteGroup Then Continue For
+										If WriteGroupParentGroups.ContainsKey(ReadGroup) Then Continue For
+										
+										Dim GrpInfoExReadGroup As GroupInfoEx = BRApi.Security.Admin.GetGroupInfoEx(si, ReadGroup)
+										WriteGroupParentGroups.Add(ReadGroup, GrpInfoExReadGroup.GroupInfo.Group)
+										Dim WriteGroupParentGroupsToSave As List(Of Guid) = WriteGroupParentGroups.Keys.ToList()
+										
+										BRApi.Security.Admin.SaveGroup(si, GrpInfoExWriteGroup.GroupInfo, True, WriteGroupParentGroupsToSave, False)
+										
+										If bDebug Then Log.AppendLine($"Adding ReadGroup to ReadWriteGroup for {Ent.Name}")
+									End If
+									
+								Next
+								
+							Next
+							
+						End If
+						
+						'==========
+						'= Log
+						'==========
+						
+						If bDebug Then BRApi.ErrorLog.LogMessage(si, Log.ToString())
+
+				End Select
+
+				Return Nothing
+			Catch ex As Exception
+				BRApi.ErrorLog.LogMessage(si, Log.ToString())
+				Throw ErrorHandler.LogWrite(si, New XFException(si, ex))
+			End Try
+		End Function
+		
+	End Class
+	
+End Namespace]]></sourceCode>
+        </businessRule>
+    </extensibilityRulesRoot>
+</OneStreamXF>

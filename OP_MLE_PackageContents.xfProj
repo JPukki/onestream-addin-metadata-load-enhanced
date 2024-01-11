@@ -1,0 +1,13 @@
+<xfProject topFolderPath="" defaultZipFileName="OP_MLE_PV680_SV100_PackageContents">
+    <projectItems>
+        <projectItem projectItemType="BusinessRule" folderPath="" name="OP_MLE_HelperQueries" includeDescendants="true" />
+        <projectItem projectItemType="BusinessRule" folderPath="" name="OP_MLE_ParamHelper" includeDescendants="true" />
+        <projectItem projectItemType="BusinessRule" folderPath="" name="OP_MLE_SolutionHelper" includeDescendants="true" />
+        <projectItem projectItemType="BusinessRule" folderPath="" name="OP_MLE_DataMgmt" includeDescendants="true" />
+
+        <projectItem projectItemType="DataManagementGroup" folderPath="" name="Metadata Load Enhanced (OP_MLE)" includeDescendants="true" />
+        
+        <projectItem projectItemType="DashboardMaintenanceUnit" folderPath="" name="Metadata Load Enhanced (OP_MLE)" includeDescendants="true" />
+        <projectItem projectItemType="DashboardProfile" folderPath="" name="Metadata Load Enhanced (OP_MLE)" includeDescendants="true" />
+    </projectItems>
+</xfProject>

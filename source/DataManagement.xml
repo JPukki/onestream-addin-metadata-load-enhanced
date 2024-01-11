@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<OneStreamXF version="6.8.1.13230">
+    <dataManagementRoot>
+        <dataManagementGroups>
+            <dataManagementGroup name="Metadata Load Enhanced (OP_MLE)" description="" accessGroup="Administrators" maintenanceGroup="Administrators">
+                <dataManagementSteps>
+                    <dataManagementStep name="EntitySecurityGroupNesting" description="" stepType="ExecuteBusinessRule">
+                        <stepDefinition>
+                            <DataMgmtExecuteBRDefinition>
+                                <UseDetailedLogging>false</UseDetailedLogging>
+                                <BusinessRuleName>OP_MLE_DataMgmt</BusinessRuleName>
+                                <Parameters />
+                            </DataMgmtExecuteBRDefinition>
+                        </stepDefinition>
+                    </dataManagementStep>
+                </dataManagementSteps>
+                <dataManagementSequences>
+                    <dataManagementSequence name="EntitySecurityGroupNesting" description="">
+                        <sequenceDefinition>
+                            <DataMgmtSequenceDefinition>
+                                <AppServer />
+                                <Parameters>
+                                    <Parameter SubstVarName="">
+                                        <DefaultValue />
+                                    </Parameter>
+                                    <Parameter SubstVarName="">
+                                        <DefaultValue />
+                                    </Parameter>
+                                    <Parameter SubstVarName="">
+                                        <DefaultValue />
+                                    </Parameter>
+                                    <Parameter SubstVarName="">
+                                        <DefaultValue />
+                                    </Parameter>
+                                    <Parameter SubstVarName="">
+                                        <DefaultValue />
+                                    </Parameter>
+                                    <Parameter SubstVarName="">
+                                        <DefaultValue />
+                                    </Parameter>
+                                    <Parameter SubstVarName="">
+                                        <DefaultValue />
+                                    </Parameter>
+                                    <Parameter SubstVarName="">
+                                        <DefaultValue />
+                                    </Parameter>
+                                </Parameters>
+                            </DataMgmtSequenceDefinition>
+                        </sequenceDefinition>
+                        <stepMembers>
+                            <stepMember name="EntitySecurityGroupNesting" />
+                        </stepMembers>
+                    </dataManagementSequence>
+                </dataManagementSequences>
+            </dataManagementGroup>
+        </dataManagementGroups>
+    </dataManagementRoot>
+</OneStreamXF>
