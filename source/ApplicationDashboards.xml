@@ -2209,22 +2209,9 @@ End Namespace
                 </parameters>
                 <adapters />
                 <components>
-                    <component name="btn_AuthorContact_OP_MLE" description="" xfText="Feedback" toolTip="" componentType="Button" boundParameterName="" paramValueForButtonClick="" applyParamValueToCurrentDbrd="true" selectionChangedSaveType="NoAction" selectionChangedPovActionType="NoAction" selectionChangedTaskType="NoTask" selectionChangedUIActionType="NoAction" selectionChangedNavigationType="OpenWebSite">
-                        <selectionChangedNavigationArgs>UrlOrFullFileName=[mailto:jussi.pukki@gmail.com]</selectionChangedNavigationArgs>
-                        <componentDefinition>
-                            <XFButtonDefinition ButtonType="Standard">
-                                <ImageFileSourceType>Unknown</ImageFileSourceType>
-                                <ImageUrlOrFullFileName />
-                                <PageNumber />
-                                <ExcelSheet />
-                                <ExcelNamedRange />
-                            </XFButtonDefinition>
-                        </componentDefinition>
-                        <adapterMembers />
-                    </component>
-                    <component name="btn_AuthorLink_OP_MLE" description="" xfText="About me" toolTip="" componentType="Button" boundParameterName="" paramValueForButtonClick="" applyParamValueToCurrentDbrd="true" selectionChangedSaveType="NoAction" selectionChangedPovActionType="NoAction" selectionChangedTaskType="NoTask" selectionChangedUIActionType="NoAction" selectionChangedNavigationType="OpenWebSite">
+                    <component name="btn_AuthorLink_OP_MLE" description="" xfText="Github" toolTip="" componentType="Button" boundParameterName="" paramValueForButtonClick="" applyParamValueToCurrentDbrd="true" selectionChangedSaveType="NoAction" selectionChangedPovActionType="NoAction" selectionChangedTaskType="NoTask" selectionChangedUIActionType="NoAction" selectionChangedNavigationType="OpenWebSite">
                         <displayFormat>MarginLeft = 5, MarginRight = 5</displayFormat>
-                        <selectionChangedNavigationArgs>UrlOrFullFileName=[https://www.jussipukki.com]</selectionChangedNavigationArgs>
+                        <selectionChangedNavigationArgs>UrlOrFullFileName=[https://github.com/JPukki/onestream-addin-metadata-load-enhanced]</selectionChangedNavigationArgs>
                         <componentDefinition>
                             <XFButtonDefinition ButtonType="Standard">
                                 <ImageFileSourceType>Unknown</ImageFileSourceType>
@@ -2987,7 +2974,6 @@ End Namespace
                                         <ColumnDefinitions>
                                             <ColumnDefinition ColumnType="Component" Width="*" />
                                             <ColumnDefinition ColumnType="Component" Width="Auto" />
-                                            <ColumnDefinition ColumnType="Component" Width="Auto" />
                                         </ColumnDefinitions>
                                         <RowDefinitions>
                                             <RowDefinition RowType="Component" Height="*" />
@@ -2996,7 +2982,6 @@ End Namespace
                                 </DashboardDefinition>
                                 <componentMembers>
                                     <componentMember name="lbl_AuthorHeading_OP_MLE" left="" top="" width="" height="" dockPosition="Left" />
-                                    <componentMember name="btn_AuthorContact_OP_MLE" left="" top="" width="" height="" dockPosition="Left" />
                                     <componentMember name="btn_AuthorLink_OP_MLE" left="" top="" width="" height="" dockPosition="Left" />
                                 </componentMembers>
                             </dashboard>
