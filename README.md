@@ -4,7 +4,7 @@
 - Create missing security groups automatically during load 
 - Nest security groups to match entity hierarchy
 
-**IMPORTANT: The solution changes your application's metadata and security configuration. Test carefully in development before using in production. Limit access to administrators.**
+**The solution changes your application's metadata dimensions and security groups. Test in development before using in production. Limit access to administrators.**
 
 ## Install
 
@@ -30,4 +30,8 @@
 
 ## Sign up for updates
 
-[Google Forms mail list signup](https://forms.gle/L6DjYBXX34FUS8FDA)
+If you find the solution useful, please sign up for the [mail list](https://forms.gle/L6DjYBXX34FUS8FDA) to get info on updates and new solutions.
+
+## Also check out
+
+- [Data Audit](https://github.com/JPukki/onestream-addin-data-audit)
